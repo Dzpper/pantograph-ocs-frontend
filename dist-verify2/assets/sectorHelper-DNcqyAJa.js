@@ -1,0 +1,1 @@
+import{a4 as i,q as o,b2 as s}from"./install-C949q4Vt.js";function d(e,a,n){var r=e.get("borderRadius");if(r==null)return n?{cornerRadius:0}:null;i(r)||(r=[r,r,r,r]);var t=Math.abs(a.r||0-a.r0||0);return{cornerRadius:o(r,function(u){return s(u,t)})}}export{d as g};
