@@ -54,6 +54,13 @@
       <circle cx="19" cy="12" r="2" />
       <path d="M7 12h10" />
     </template>
+    <!-- 杆位 -->
+    <template v-else-if="name === 'pole'">
+      <path d="M12 3v18" />
+      <circle cx="12" cy="8" r="2.4" />
+      <path d="M7 20h10" />
+      <path d="M9 12h6" />
+    </template>
     <!-- 燃弧 -->
     <template v-else-if="name === 'arc'">
       <path d="M13 2 7 13h5l-1 9 7-12h-5l1-8z" />

@@ -3,18 +3,28 @@
 const KEY = 'om_analysis_prefs'
 
 const DEFAULT_METRIC = '导高 (mm)'
+const DEFAULT_POLE_CHARTS = ['arc', 'hard', 'height', 'stagger', 'voltage']
 
 export function loadAnalysisPrefs() {
   try {
     const raw = localStorage.getItem(KEY)
     const p = raw ? JSON.parse(raw) : {}
+    const poleCharts = Array.isArray(p.poleChartKeys) && p.poleChartKeys.length
+      ? p.poleChartKeys.map(String)
+      : [...DEFAULT_POLE_CHARTS]
     return {
       metric: p.metric || DEFAULT_METRIC,
-      upper: p.upper != null ? Number(p.upper) : 4200,
-      lower: p.lower != null ? Number(p.lower) : 4000,
+      upper: p.upper != null && Number.isFinite(Number(p.upper)) ? Number(p.upper) : null,
+      lower: p.lower != null && Number.isFinite(Number(p.lower)) ? Number(p.lower) : null,
+      poleChartKeys: poleCharts,
     }
   } catch {
-    return { metric: DEFAULT_METRIC, upper: 4200, lower: 4000 }
+    return {
+      metric: DEFAULT_METRIC,
+      upper: null,
+      lower: null,
+      poleChartKeys: [...DEFAULT_POLE_CHARTS],
+    }
   }
 }
 

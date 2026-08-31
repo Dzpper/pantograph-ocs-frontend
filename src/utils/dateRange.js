@@ -23,6 +23,15 @@ export function toPickerDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
+/** 检测日是否落在日历范围内（dateRange 为 YYYY-MM-DD 对） */
+export function datesInPickerRange(allDates, dateRange) {
+  if (!allDates?.length || !Array.isArray(dateRange) || dateRange.length !== 2) return []
+  const start = parseInspectDate(dateRange[0])
+  const end = parseInspectDate(dateRange[1])
+  if (!start || !end) return []
+  return filterDatesByRange(allDates, start, end)
+}
+
 /** 在可用检测日期列表中，筛选落在 [start, end] 内的日期（保持原列表顺序，新→旧） */
 export function filterDatesByRange(allDates, rangeStart, rangeEnd) {
   if (!allDates?.length || !rangeStart || !rangeEnd) return []
@@ -44,4 +53,16 @@ export function defaultRangeForDates(allDates, months = 3) {
   start.setMonth(start.getMonth() - months)
   const rangeStart = oldest && start < oldest ? oldest : start
   return [rangeStart, newest]
+}
+
+/** 最近 n 期检测日，以及刚好覆盖它们的日历起止（dates 新→旧） */
+export function recentInspectWindow(allDates, n) {
+  if (!allDates?.length) return { dates: [], start: null, end: null }
+  const count = Math.max(1, Math.min(Number(n) || 1, allDates.length))
+  const dates = allDates.slice(0, count)
+  return {
+    dates,
+    start: parseInspectDate(dates[dates.length - 1]),
+    end: parseInspectDate(dates[0]),
+  }
 }

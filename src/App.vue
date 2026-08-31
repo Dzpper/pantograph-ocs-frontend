@@ -115,14 +115,26 @@
           :line-id="lineId"
           :direction="direction"
           :selected-dates="selectedDates"
+          :dates-loading="datesLoading"
           :date-filter-mode="currentDef?.page?.dateFilterMode || 'periods'"
           :hide-direction="!!currentDef?.page?.hideDirection"
           :simple-dates="!!currentDef?.page?.simpleDates"
           :default-range-months="currentDef?.page?.defaultRangeMonths || 1"
+          :default-select-count="currentDef?.page?.defaultSelectCount || 0"
+          :max-select-dates="currentDef?.page?.maxSelectDates || 0"
+          :enable-batch-picker="filterEnableBatchPicker"
+          :enable-multi-batch-compare="filterEnableMultiBatchCompare"
+          :manual-batch="manualBatch"
+          :batch-by-date="batchByDate"
+          :batches-by-date="batchesByDate"
           @update:lineId="onLineChange"
           @update:direction="onDirectionChange"
           @update:selectedDates="onDatesChange"
+          @update:manualBatch="onManualBatchChange"
+          @update:batchByDate="onBatchByDateChange"
+          @update:batchesByDate="onBatchesByDateChange"
           @change="onFilterChange"
+          @query="onFilterQuery"
         />
 
         <div class="om-content">
@@ -177,6 +189,7 @@
 </template>
 
 <script>
+import { computed } from 'vue'
 import { fetchLines, fetchDates, fetchStripWearLines, fetchMe } from './api/client'
 import { centers, DEFAULT_CENTER, DEFAULT_PAGE, findPage, pagesOfCenter, firstPageKeyOfCenter } from './config/modules'
 import PlaceholderPage from './components/common/PlaceholderPage.vue'
@@ -186,6 +199,7 @@ import LoginPage from './components/LoginPage.vue'
 import ChangePasswordDialog from './components/ChangePasswordDialog.vue'
 import { clearAuth, getStoredUser, getToken, isAdmin } from './utils/auth'
 import { pickLineCode, pickLineName, resolveLineName } from './utils/lineDisplay'
+import { loadBatchPrefs, saveBatchPrefs } from './utils/batchPrefs'
 
 const FILTER_STORAGE_KEY = 'om_filter_prefs'
 
@@ -196,6 +210,7 @@ export default {
     return {
       navigateTo: this.navigateTo,
       clearNavigationContext: this.clearNavigationContext,
+      analysisQueryNonce: computed(() => this.queryNonce),
     }
   },
   data() {
@@ -222,6 +237,15 @@ export default {
       _savedLineId: '',
       mobileMenuOpen: false,
       changePasswordVisible: false,
+      /** 同日多组检测：手动选组状态 */
+      manualBatch: false,
+      batchByDate: {},
+      batchesByDate: {},
+      /** 手动点「查询」时递增，分析页据此强制刷新 */
+      queryNonce: 0,
+      /** 切线/行别进行中：忽略 FilterBar 回灌的旧 dates/batches */
+      filterSwitching: false,
+      datesLoadSeq: 0,
     }
   },
   computed: {
@@ -264,6 +288,15 @@ export default {
     currentDef() {
       return findPage(this.currentPage)
     },
+    filterEnableBatchPicker() {
+      const page = this.currentDef?.page
+      if (this.currentCenter !== 'analysis') return false
+      if (page?.enableBatchPicker) return true
+      return this.currentDef?.group?.key === 'data-analysis'
+    },
+    filterEnableMultiBatchCompare() {
+      return !!this.currentDef?.page?.enableMultiBatchCompare
+    },
     currentComponent() {
       const def = this.currentDef
       if (!def) return PlaceholderPage
@@ -290,6 +323,10 @@ export default {
         dateRange: this.dateRange,
         isDark: this.isDark,
         navigateContext: this.navigationContext,
+        manualBatch: this.manualBatch,
+        batchByDate: this.batchByDate,
+        batchesByDate: this.batchesByDate,
+        queryNonce: this.queryNonce,
       }
     },
     currentLineName() {
@@ -376,6 +413,25 @@ export default {
     filterStorageKey() {
       const u = this.authUser?.username
       return u ? `${FILTER_STORAGE_KEY}_${u}` : FILTER_STORAGE_KEY
+    },
+    syncBatchPrefsFromStorage() {
+      if (!this.lineId) {
+        this.manualBatch = false
+        this.batchByDate = {}
+        this.batchesByDate = {}
+        return
+      }
+      const prefs = loadBatchPrefs(this.lineId, this.direction)
+      this.manualBatch = prefs.manualBatch
+      this.batchByDate = { ...prefs.batchByDate }
+      this.batchesByDate = { ...(prefs.batchesByDate || {}) }
+    },
+    saveBatchPrefsForCurrent(partial = {}) {
+      if (!this.lineId) return
+      const next = saveBatchPrefs(partial, this.lineId, this.direction)
+      this.manualBatch = next.manualBatch
+      this.batchByDate = { ...(next.batchByDate || {}) }
+      this.batchesByDate = { ...(next.batchesByDate || {}) }
     },
     async bootstrapAuth() {
       const token = getToken()
@@ -591,19 +647,19 @@ export default {
     },
     adjustDatesForPage() {
       if (!this.dates.length) return
-      // 已有选择且仍在当前日期列表中：保留，避免切页反复改选
       const stillValid = (this.selectedDates || []).filter((d) => this.dates.includes(d))
       if (stillValid.length) {
         this.selectedDates = stillValid
         return
       }
       const isRangeMode = this.currentDef?.page?.dateFilterMode === 'range'
+      const defaultCount = this.currentDef?.page?.defaultSelectCount
       if (isRangeMode) {
-        this.selectedDates = [this.dates[0]]
+        this.selectedDates = []
       } else if (this.currentDef?.page?.simpleDates) {
         this.selectedDates = this.dates.slice(0, Math.min(2, this.dates.length))
-      } else if (this.dates.length >= 2) {
-        this.selectedDates = this.dates.slice(0, 2)
+      } else if (defaultCount && defaultCount > 0) {
+        this.selectedDates = this.dates.slice(0, Math.min(defaultCount, this.dates.length))
       } else {
         this.selectedDates = this.dates.slice(0, 1)
       }
@@ -622,27 +678,84 @@ export default {
     },
     onLineChange(v) {
       if (v !== this.lineId) {
+        this.filterSwitching = true
         this.lineId = v
+        this.selectedDates = []
+        this.syncBatchPrefsFromStorage()
         this.saveFilterPrefs()
         this.loadDates()
       }
     },
     onDirectionChange(v) {
       if (v !== this.direction) {
+        this.filterSwitching = true
         this.direction = v
+        this.selectedDates = []
+        this.syncBatchPrefsFromStorage()
         this.saveFilterPrefs()
         this.loadDates()
       }
     },
     onDatesChange(v) {
-      this.selectedDates = this.dates.filter((d) => v.includes(d))
+      if (this.filterSwitching) return
+      const incoming = Array.isArray(v) ? v : []
+      if (!this.dates.length) {
+        this.selectedDates = incoming
+        this.saveFilterPrefs()
+        return
+      }
+      const compact = (d) => String(d || '').replace(/-/g, '').slice(0, 8)
+      const byCompact = new Map((this.dates || []).map((d) => [compact(d), d]))
+      const kept = []
+      for (const d of incoming) {
+        const hit = byCompact.get(compact(d)) || (this.dates.includes(d) ? d : '')
+        if (hit && !kept.includes(hit)) kept.push(hit)
+      }
+      this.selectedDates = kept
       this.saveFilterPrefs()
     },
+    onFilterQuery() {
+      this.queryNonce += 1
+    },
+    onManualBatchChange(v) {
+      if (this.filterSwitching) return
+      this.manualBatch = !!v
+      this.saveBatchPrefsForCurrent({ manualBatch: this.manualBatch, batchByDate: this.batchByDate, batchesByDate: this.batchesByDate })
+    },
+    onBatchByDateChange(v) {
+      if (this.filterSwitching) return
+      this.batchByDate = { ...(v || {}) }
+      this.saveBatchPrefsForCurrent({ manualBatch: this.manualBatch, batchByDate: this.batchByDate, batchesByDate: this.batchesByDate })
+    },
+    onBatchesByDateChange(v) {
+      if (this.filterSwitching) return
+      this.batchesByDate = { ...(v || {}) }
+      this.saveBatchPrefsForCurrent({ manualBatch: this.manualBatch, batchByDate: this.batchByDate, batchesByDate: this.batchesByDate })
+    },
     onFilterChange(payload) {
+      if (this.filterSwitching) {
+        return
+      }
       if (payload?.dateRange) {
         this.dateRange = payload.dateRange
-        this.saveFilterPrefs()
+      } else if (payload && Object.prototype.hasOwnProperty.call(payload, 'dateRange') && !payload.dateRange) {
+        this.dateRange = null
       }
+      if (payload?.manualBatch != null) {
+        this.manualBatch = !!payload.manualBatch
+      }
+      if (payload?.batchByDate) {
+        this.batchByDate = { ...payload.batchByDate }
+      }
+      if (payload?.batchesByDate) {
+        this.batchesByDate = { ...payload.batchesByDate }
+      }
+      saveBatchPrefs({
+        manualBatch: this.manualBatch,
+        batchByDate: this.batchByDate,
+        batchesByDate: this.batchesByDate,
+      }, this.lineId, this.direction)
+      this.saveFilterPrefs()
     },
     async loadLines() {
       this.linesReady = false
@@ -654,6 +767,7 @@ export default {
         this.lines = detect || []
         this.stripLines = strip || []
         if (this.applyLineFromPool()) {
+          this.syncBatchPrefsFromStorage()
           await this.loadDates()
         }
       } catch (e) {
@@ -665,6 +779,9 @@ export default {
     },
     async loadDates() {
       if (!this.lineId || !this.direction) return
+      const seq = ++this.datesLoadSeq
+      const reqLine = this.lineId
+      const reqDir = this.direction
       // 纯碳滑板线无检测日期时，汇报仍可选，日期留空
       const isStripOnly =
         this.currentCenter === 'focus-report' &&
@@ -673,6 +790,7 @@ export default {
       this.datesLoading = true
       try {
         if (isStripOnly) {
+          if (seq !== this.datesLoadSeq || this.lineId !== reqLine || this.direction !== reqDir) return
           this.dates = []
           this.dateMeta = {}
           this.mergeNote = ''
@@ -680,11 +798,17 @@ export default {
           return
         }
         const res = await fetchDates(this.lineId, this.direction)
+        if (seq !== this.datesLoadSeq || this.lineId !== reqLine || this.direction !== reqDir) return
         this.dates = res.dates || []
         this.dateMeta = res.dateMeta || {}
         this.mergeNote = res.mergeNote || ''
         if (!this.dates.length) {
           this.selectedDates = []
+          return
+        }
+        if (this.filterSwitching) {
+          // 日期池交给 FilterBar 按新线路/行别重选；
+          // 这里若把已选日滤成空，分析页会当成「未选检测日」不再请求。
           return
         }
         const stillValid = (this.selectedDates || []).filter((d) => this.dates.includes(d))
@@ -693,19 +817,27 @@ export default {
           return
         }
         const mode = this.currentDef?.page?.dateFilterMode || 'periods'
-        const isRangeMode = mode === 'range'
-        if (isRangeMode) {
-          this.selectedDates = [this.dates[0]]
-        } else {
+        if (mode === 'range') {
+          this.selectedDates = []
+          return
+        }
+        if (this.currentDef?.page?.simpleDates) {
           this.selectedDates = this.dates.slice(0, Math.min(2, this.dates.length))
+        } else {
+          const n = this.currentDef?.page?.defaultSelectCount || 1
+          this.selectedDates = this.dates.slice(0, Math.min(n, this.dates.length))
         }
       } catch (e) {
         console.error(e)
+        if (seq !== this.datesLoadSeq) return
         this.selectedDates = []
         this.dateMeta = {}
         this.mergeNote = ''
       } finally {
-        this.datesLoading = false
+        if (seq === this.datesLoadSeq) {
+          this.datesLoading = false
+          this.filterSwitching = false
+        }
       }
     },
   },

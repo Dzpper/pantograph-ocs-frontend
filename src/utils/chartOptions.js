@@ -142,6 +142,17 @@ export function layoutForChart(isDark, {
   }
 }
 
+/** 超过 activateAt 条曲线时，图例默认只勾选前 keep 条，其余收进图例滚动区 */
+export function legendSelectedKeepFirst(names, { keep = 2, activateAt = 8 } = {}) {
+  const list = (names || []).filter(Boolean)
+  if (list.length <= activateAt) return undefined
+  const selected = {}
+  list.forEach((n, i) => {
+    selected[n] = i < keep
+  })
+  return selected
+}
+
 /** 图例默认底部滚动，避免压住左侧 Y 轴 */
 export function baseLegend(isDark, extra = {}) {
   return {

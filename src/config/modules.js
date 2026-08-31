@@ -13,22 +13,57 @@
  */
 import { defineAsyncComponent } from 'vue'
 
-const ComparisonPage = defineAsyncComponent(() => import('../components/ComparisonPage.vue'))
-const ArcAnalysisPage = defineAsyncComponent(() => import('../components/ArcAnalysisPage.vue'))
-const SpeedArcPage = defineAsyncComponent(() => import('../components/SpeedArcPage.vue'))
-const WarningPage = defineAsyncComponent(() => import('../components/WarningPage.vue'))
-const AlarmStatsPage = defineAsyncComponent(() => import('../components/AlarmStatsPage.vue'))
-const InspectionReportPage = defineAsyncComponent(() => import('../components/InspectionReportPage.vue'))
-const StripWearImportPage = defineAsyncComponent(() => import('../components/StripWearImportPage.vue'))
-const StripWearDashboardPage = defineAsyncComponent(() => import('../components/StripWearDashboardPage.vue'))
-const StripWearPredictPage = defineAsyncComponent(() => import('../components/StripWearPredictPage.vue'))
-const ClimateImportPage = defineAsyncComponent(() => import('../components/ClimateImportPage.vue'))
-const ClimateDashboardPage = defineAsyncComponent(() => import('../components/ClimateDashboardPage.vue'))
-const MatchingWorkbenchPage = defineAsyncComponent(() => import('../components/MatchingWorkbenchPage.vue'))
-const UserManagementPage = defineAsyncComponent(() => import('../components/UserManagementPage.vue'))
-const LineManagementPage = defineAsyncComponent(() => import('../components/LineManagementPage.vue'))
-const AdminWorkbenchPage = defineAsyncComponent(() => import('../components/AdminWorkbenchPage.vue'))
-const OpLogPage = defineAsyncComponent(() => import('../components/OpLogPage.vue'))
+const ComparisonPage = defineAsyncComponent(
+  () => import('../components/ComparisonPage.vue'),
+)
+const ArcAnalysisPage = defineAsyncComponent(
+  () => import('../components/ArcAnalysisPage.vue'),
+)
+const SpeedArcPage = defineAsyncComponent(
+  () => import('../components/SpeedArcPage.vue'),
+)
+const WarningPage = defineAsyncComponent(
+  () => import('../components/WarningPage.vue'),
+)
+const AlarmStatsPage = defineAsyncComponent(
+  () => import('../components/AlarmStatsPage.vue'),
+)
+const InspectionReportPage = defineAsyncComponent(
+  () => import('../components/InspectionReportPage.vue'),
+)
+const StripWearImportPage = defineAsyncComponent(
+  () => import('../components/StripWearImportPage.vue'),
+)
+const StripWearDashboardPage = defineAsyncComponent(
+  () => import('../components/StripWearDashboardPage.vue'),
+)
+const StripWearPredictPage = defineAsyncComponent(
+  () => import('../components/StripWearPredictPage.vue'),
+)
+const ClimateImportPage = defineAsyncComponent(
+  () => import('../components/ClimateImportPage.vue'),
+)
+const ClimateDashboardPage = defineAsyncComponent(
+  () => import('../components/ClimateDashboardPage.vue'),
+)
+const MatchingWorkbenchPage = defineAsyncComponent(
+  () => import('../components/MatchingWorkbenchPage.vue'),
+)
+const PoleBaselinePage = defineAsyncComponent(
+  () => import('../components/PoleBaselinePage.vue'),
+)
+const UserManagementPage = defineAsyncComponent(
+  () => import('../components/UserManagementPage.vue'),
+)
+const LineManagementPage = defineAsyncComponent(
+  () => import('../components/LineManagementPage.vue'),
+)
+const AdminWorkbenchPage = defineAsyncComponent(
+  () => import('../components/AdminWorkbenchPage.vue'),
+)
+const OpLogPage = defineAsyncComponent(
+  () => import('../components/OpLogPage.vue'),
+)
 
 export const centers = [
   {
@@ -76,26 +111,39 @@ export const centers = [
     groups: [
       {
         key: 'line-risk',
-        label: '线路综合分析',
+        label: '线路研判',
         icon: 'target',
         pages: [
           {
             key: 'matching-workbench',
-            label: '综合分析',
+            label: '线路简报',
             icon: 'trend',
             component: MatchingWorkbenchPage,
             dateFilterMode: 'range',
-            defaultRangeMonths: 1,
-            description: '汇总燃弧、温湿度、滑板等多源数据，列出宜多加关注的杆位与参考说明',
+            defaultSelectCount: 12,
+            description: '线路燃弧时长与燃弧率',
+          },
+          {
+            key: 'pole-baseline',
+            label: '杆号评估',
+            icon: 'pole',
+            component: PoleBaselinePage,
+            dateFilterMode: 'range',
+            defaultSelectCount: 12,
+            enableBatchPicker: true,
+            enableMultiBatchCompare: true,
+            description: '按杆号对照自身历史',
           },
           {
             key: 'alarm-network',
-            label: '线路概况',
+            label: '超限统计',
             icon: 'line',
             component: AlarmStatsPage,
             dateFilterMode: 'range',
-            defaultRangeMonths: 1,
-            description: '本线超限结构与长期关注区段',
+            defaultSelectCount: 12,
+            enableBatchPicker: true,
+            enableMultiBatchCompare: true,
+            description: '阈值次数、类型与热点',
           },
         ],
       },
@@ -104,10 +152,42 @@ export const centers = [
         label: '检测数据明细',
         icon: 'list',
         pages: [
-          { key: 'arc', label: '燃弧分析', icon: 'arc', component: ArcAnalysisPage, dateFilterMode: 'range', defaultRangeMonths: 1, description: '燃弧强度超限散点与明细（综合分析的点位来源）' },
-          { key: 'speed-arc', label: '速度-燃弧图', icon: 'speed', component: SpeedArcPage, dateFilterMode: 'range', defaultRangeMonths: 1, description: '速度与燃弧强度关联（综合分析的工况核对）' },
-          { key: 'warning', label: '超限预警', icon: 'alert', component: WarningPage, dateFilterMode: 'range', defaultRangeMonths: 1, description: '按阈值检测超限点' },
-          { key: 'comparison', label: '新旧对比', icon: 'compare', component: ComparisonPage, description: '两期检测数据沿杆号叠加对比' },
+          {
+            key: 'arc',
+            label: '燃弧分析',
+            icon: 'arc',
+            component: ArcAnalysisPage,
+            dateFilterMode: 'range',
+            defaultRangeMonths: 1,
+            description: '燃弧强度超限散点与明细（综合分析的点位来源）',
+          },
+          {
+            key: 'speed-arc',
+            label: '速度-燃弧图',
+            icon: 'speed',
+            component: SpeedArcPage,
+            dateFilterMode: 'range',
+            defaultSelectCount: 2,
+            enableBatchPicker: true,
+            enableMultiBatchCompare: true,
+            description: '速度与燃弧强度关联（综合分析的工况核对）',
+          },
+          {
+            key: 'warning',
+            label: '超限预警',
+            icon: 'alert',
+            component: WarningPage,
+            dateFilterMode: 'range',
+            defaultRangeMonths: 1,
+            description: '按阈值检测超限点',
+          },
+          {
+            key: 'comparison',
+            label: '新旧对比',
+            icon: 'compare',
+            component: ComparisonPage,
+            description: '两期检测数据沿杆号叠加对比',
+          },
         ],
       },
     ],
@@ -175,9 +255,31 @@ export const centers = [
         label: '线路与权限',
         icon: 'shield',
         pages: [
-          { key: 'sys-home', label: '管理工作台', icon: 'chart', component: AdminWorkbenchPage, hideFilter: true, adminOnly: true },
-          { key: 'sys-lines', label: '线路管理', icon: 'list', component: LineManagementPage, hideFilter: true, adminOnly: true, description: '线路开通、弓网入库与三域数据状态' },
-          { key: 'sys-user', label: '用户管理', icon: 'user', component: UserManagementPage, hideFilter: true, adminOnly: true },
+          {
+            key: 'sys-home',
+            label: '管理工作台',
+            icon: 'chart',
+            component: AdminWorkbenchPage,
+            hideFilter: true,
+            adminOnly: true,
+          },
+          {
+            key: 'sys-lines',
+            label: '线路管理',
+            icon: 'list',
+            component: LineManagementPage,
+            hideFilter: true,
+            adminOnly: true,
+            description: '线路开通、弓网入库与三域数据状态',
+          },
+          {
+            key: 'sys-user',
+            label: '用户管理',
+            icon: 'user',
+            component: UserManagementPage,
+            hideFilter: true,
+            adminOnly: true,
+          },
         ],
       },
       {
@@ -185,7 +287,14 @@ export const centers = [
         label: '系统日志',
         icon: 'log',
         pages: [
-          { key: 'sys-log', label: '操作日志', icon: 'log', component: OpLogPage, hideFilter: true, adminOnly: true },
+          {
+            key: 'sys-log',
+            label: '操作日志',
+            icon: 'log',
+            component: OpLogPage,
+            hideFilter: true,
+            adminOnly: true,
+          },
         ],
       },
     ],

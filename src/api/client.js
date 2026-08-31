@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { cachedPost, cacheKey, getCached, setCached } from './cache'
+import { cachedPost, cachedGet, cacheKey, getCached, setCached } from './cache'
 import { clearAuth, getToken } from '../utils/auth'
 import { normalizeLineList } from '../utils/lineDisplay'
 import { downloadApiBlob } from '../utils/download'
@@ -219,6 +219,15 @@ export async function fetchDates(lineId, direction) {
     dateMeta: res.data.date_meta || {},
     mergeNote: res.data.merge_note || '',
   }
+}
+
+/** 同日多组检测：某检测日下的检测组列表 */
+export async function fetchDayBatches(lineId, direction, date) {
+  return cachedGet(client, '/day-batches', {
+    line_id: lineId,
+    direction,
+    date,
+  })
 }
 
 export async function fetchMetrics() {
@@ -461,9 +470,13 @@ export async function postArcTyping(payload) {
   return res.data
 }
 
-export async function postCorrelationDiagnose(payload) {
-  const res = await client.post('/correlation/diagnose', payload)
-  return res.data
+export async function postCorrelationDiagnose(payload, options) {
+  return cachedPost(client, '/correlation/diagnose', payload, options)
+}
+
+/** 杆号评估：按杆号对照自身历史，分项陈述 */
+export async function postPoleBaseline(payload, options) {
+  return cachedPost(client, '/pole-baseline', payload, options)
 }
 
 export default client
