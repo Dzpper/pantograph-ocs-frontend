@@ -159,6 +159,8 @@ export const centers = [
             component: ArcAnalysisPage,
             dateFilterMode: 'range',
             defaultRangeMonths: 1,
+            enableBatchPicker: true,
+            enableMultiBatchCompare: true,
             description: '燃弧强度超限散点与明细（综合分析的点位来源）',
           },
           {
@@ -179,6 +181,8 @@ export const centers = [
             component: WarningPage,
             dateFilterMode: 'range',
             defaultRangeMonths: 1,
+            enableBatchPicker: true,
+            enableMultiBatchCompare: true,
             description: '按阈值检测超限点',
           },
           {
@@ -186,6 +190,10 @@ export const centers = [
             label: '新旧对比',
             icon: 'compare',
             component: ComparisonPage,
+            dateFilterMode: 'range',
+            defaultSelectCount: 2,
+            enableBatchPicker: true,
+            enableMultiBatchCompare: true,
             description: '两期检测数据沿杆号叠加对比',
           },
         ],
@@ -226,6 +234,7 @@ export const centers = [
     key: 'focus-report',
     label: '分析报告',
     icon: 'report',
+    adminOnly: true,
     groups: [
       {
         key: 'focus-report-group',

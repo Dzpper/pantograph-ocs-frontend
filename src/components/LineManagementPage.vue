@@ -4,7 +4,7 @@
       <div>
         <h2 class="page-title">线路管理</h2>
         <p class="page-sub">
-          线路开通、弓网数据上传导入与三域数据状态一览。内部编码开通后<strong>不可修改</strong>；有数据或用户授权时只能停用，不能删除。
+          线路开通、弓网导入与三域数据状态。点「维护」查看导入记录、管理批次。内部编码开通后不可修改。
         </p>
       </div>
       <el-button type="primary" @click="openCreate">开通新线路</el-button>
@@ -28,76 +28,44 @@
     <div class="om-panel">
       <el-table :data="filteredLines" size="small" stripe empty-text="暂无线路">
         <el-table-column prop="line_name" label="线路名称" min-width="150" />
-        <el-table-column prop="city" label="城市" min-width="90" />
-        <el-table-column label="状态" min-width="88">
+        <el-table-column prop="city" label="城市" width="90" />
+        <el-table-column label="状态" width="88">
           <template #default="{ row }">
             <el-tag size="small" :type="row.is_active ? 'success' : 'info'">
               {{ row.is_active ? '启用' : '停用' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="弓网检测" min-width="96">
+        <el-table-column label="弓网检测" width="96">
           <template #default="{ row }">
             <el-tag size="small" :type="row.has_monitor_data ? 'success' : 'info'">
               {{ row.has_monitor_data ? '已入库' : '待入库' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="磨耗" min-width="96">
+        <el-table-column label="磨耗" width="96">
           <template #default="{ row }">
             <el-tag size="small" :type="row.strip_measurement_count ? 'success' : 'info'">
               {{ row.strip_measurement_count ? `${row.strip_measurement_count} 条` : '待导入' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="温湿度" min-width="96">
+        <el-table-column label="温湿度" width="96">
           <template #default="{ row }">
             <el-tag size="small" :type="row.climate_day_count ? 'success' : 'info'">
               {{ row.climate_day_count ? `${row.climate_day_count} 日` : '待导入' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="授权" min-width="72">
+        <el-table-column label="授权" width="72">
           <template #default="{ row }">
             {{ row.grant_count || 0 }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="340" fixed="right">
+        <el-table-column label="操作" width="168" fixed="right">
           <template #default="{ row }">
+            <el-button link type="primary" @click="openMaintain(row)">维护</el-button>
             <el-button link type="primary" @click="openImport(row)">导入弓网</el-button>
-            <el-button
-              link
-              type="primary"
-              :disabled="!row.has_monitor_data"
-              @click="openManage(row)"
-            >
-              管理弓网
-            </el-button>
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button
-              v-if="row.is_active"
-              link
-              type="warning"
-              @click="toggleActive(row, false)"
-            >
-              停用
-            </el-button>
-            <el-button
-              v-else
-              link
-              type="success"
-              @click="toggleActive(row, true)"
-            >
-              启用
-            </el-button>
-            <el-button
-              link
-              type="danger"
-              :disabled="!row.can_delete"
-              @click="removeLine(row)"
-            >
-              删除
-            </el-button>
           </template>
         </el-table-column>
         <el-table-column type="expand">
@@ -114,6 +82,68 @@
         </el-table-column>
       </el-table>
     </div>
+
+    <el-drawer
+      v-model="maintainVisible"
+      :title="maintainRow ? `维护 · ${maintainRow.line_name}` : '线路维护'"
+      size="480px"
+      destroy-on-close
+    >
+      <div v-if="maintainRow" class="maintain-body">
+        <div class="maintain-status">
+          <div class="status-item">
+            <span>状态</span>
+            <el-tag size="small" :type="maintainRow.is_active ? 'success' : 'info'">
+              {{ maintainRow.is_active ? '启用' : '停用' }}
+            </el-tag>
+          </div>
+          <div class="status-item">
+            <span>弓网</span>
+            <b>{{ maintainRow.has_monitor_data ? '已入库' : '待入库' }}</b>
+          </div>
+          <div class="status-item">
+            <span>磨耗</span>
+            <b>{{ maintainRow.strip_measurement_count ? `${maintainRow.strip_measurement_count} 条` : '待导入' }}</b>
+          </div>
+          <div class="status-item">
+            <span>温湿度</span>
+            <b>{{ maintainRow.climate_day_count ? `${maintainRow.climate_day_count} 日` : '待导入' }}</b>
+          </div>
+        </div>
+        <p class="maintain-hint">
+          弓网编码 {{ maintainRow.monitor_code }} · 磨耗/温湿度 {{ maintainRow.strip_code }}。
+          磨耗与温湿度请到对应栏目导入。
+        </p>
+        <div class="maintain-actions">
+          <el-button type="primary" @click="openImport(maintainRow)">导入弓网</el-button>
+          <el-button :disabled="!maintainRow.has_monitor_data" @click="openManage(maintainRow)">管理批次</el-button>
+          <el-button @click="openEdit(maintainRow)">编辑档案</el-button>
+          <el-button v-if="maintainRow.is_active" type="warning" plain @click="toggleActive(maintainRow, false)">停用</el-button>
+          <el-button v-else type="success" plain @click="toggleActive(maintainRow, true)">启用</el-button>
+          <el-button type="danger" plain :disabled="!maintainRow.can_delete" @click="removeLine(maintainRow)">删除</el-button>
+        </div>
+
+        <h4 class="job-title">最近导入任务</h4>
+        <el-table :data="recentJobs" size="small" v-loading="jobsLoading" empty-text="暂无导入记录">
+          <el-table-column prop="status" label="状态" width="88">
+            <template #default="{ row }">
+              <el-tag size="small" :type="jobTag(row.status)">{{ jobStatusLabel(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="进度" width="72">
+            <template #default="{ row }">{{ row.progress_pct != null ? `${row.progress_pct}%` : '—' }}</template>
+          </el-table-column>
+          <el-table-column label="结果" min-width="140">
+            <template #default="{ row }">
+              <span v-if="row.status === 'failed'" class="job-err">{{ row.error_message || '失败' }}</span>
+              <span v-else>
+                入库 {{ row.imported_count ?? 0 }} · 跳过 {{ row.skipped_count ?? 0 }}
+              </span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-drawer>
 
     <!-- 开通 -->
     <el-dialog v-model="createVisible" title="开通新线路" width="520px" @closed="resetCreateForm">
@@ -176,6 +206,14 @@
             style="width: 100%"
           />
           <p class="field-hint">A²·s，留空则使用系统默认（20万）</p>
+        </el-form-item>
+        <el-form-item label="每弓滑板数">
+          <el-select v-model="editForm.strips_per_bow" style="width: 100%">
+            <el-option :value="2" label="2 板（双弓共 4 块）" />
+            <el-option :value="3" label="3 板（双弓共 6 块）" />
+            <el-option :value="4" label="4 板（双弓共 8 块）" />
+          </el-select>
+          <p class="field-hint">一组车两受电弓；仅影响碳滑板导入列与偏磨计算，改后请按新模板导入</p>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -324,13 +362,13 @@
         @selection-change="onManageSelectionChange"
       >
         <el-table-column type="selection" width="42" />
-        <el-table-column prop="inspect_date" label="检测日" min-width="108" />
-        <el-table-column prop="direction" label="行别" min-width="64" />
-        <el-table-column prop="group_no" label="组号" min-width="56" align="center" />
+        <el-table-column prop="inspect_date" label="检测日" width="108" />
+        <el-table-column prop="direction" label="行别" width="64" />
+        <el-table-column prop="group_no" label="组号" width="56" align="center" />
         <el-table-column prop="batch_code" label="批次号" min-width="160" show-overflow-tooltip />
         <el-table-column prop="file_name" label="来源文件" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="monitoring_row_count" label="测点数" min-width="72" align="right" />
-        <el-table-column prop="imported_at" label="入库时间" min-width="150" />
+        <el-table-column prop="monitoring_row_count" label="测点数" width="72" align="right" />
+        <el-table-column prop="imported_at" label="入库时间" width="150" />
       </el-table>
 
       <div class="manage-footer-row">
@@ -378,6 +416,7 @@ import {
   uploadMonitorStagingFiles,
   runMonitorImport,
   fetchImportJob,
+  fetchImportJobs,
   fetchMonitorBatches,
   deleteMonitorBatches,
   downloadMonitorImportTemplate,
@@ -435,6 +474,7 @@ export default {
       monitor_code: '',
       strip_code: '',
       arc_intensity_threshold_a2s: null,
+      strips_per_bow: 2,
     })
     const preview = ref(emptyPreview())
     const importVisible = ref(false)
@@ -483,6 +523,10 @@ export default {
     const managePage = ref(1)
     const managePageSize = ref(50)
     const manageTotal = ref(0)
+    const maintainVisible = ref(false)
+    const maintainRow = ref(null)
+    const recentJobs = ref([])
+    const jobsLoading = ref(false)
     let pollTimer = null
     let previewTimer = null
 
@@ -523,11 +567,43 @@ export default {
       loading.value = true
       try {
         lines.value = await fetchLineRegistry(true)
+        if (maintainRow.value?.registry_id) {
+          const next = lines.value.find((r) => r.registry_id === maintainRow.value.registry_id)
+          if (next) maintainRow.value = next
+        }
       } catch (e) {
         ElMessage.error(e?.response?.data?.detail || e.message || '加载失败')
       } finally {
         loading.value = false
       }
+    }
+
+    function jobStatusLabel(s) {
+      return ({ pending: '排队', running: '进行中', completed: '完成', failed: '失败' })[s] || s || '—'
+    }
+    function jobTag(s) {
+      return ({ completed: 'success', failed: 'danger', running: 'warning', pending: 'info' })[s] || 'info'
+    }
+
+    async function loadRecentJobs(row) {
+      jobsLoading.value = true
+      try {
+        const data = await fetchImportJobs({
+          line_code: row?.monitor_code || undefined,
+          limit: 8,
+        })
+        recentJobs.value = data.jobs || []
+      } catch {
+        recentJobs.value = []
+      } finally {
+        jobsLoading.value = false
+      }
+    }
+
+    async function openMaintain(row) {
+      maintainRow.value = row
+      maintainVisible.value = true
+      await loadRecentJobs(row)
     }
 
     async function runPreview() {
@@ -585,6 +661,7 @@ export default {
         monitor_code: row.monitor_code,
         strip_code: row.strip_code,
         arc_intensity_threshold_a2s: row.arc_intensity_threshold_a2s ?? null,
+        strips_per_bow: Number(row.strips_per_bow) || 2,
       }
       editVisible.value = true
     }
@@ -597,6 +674,7 @@ export default {
         monitor_code: '',
         strip_code: '',
         arc_intensity_threshold_a2s: null,
+        strips_per_bow: 2,
       }
     }
 
@@ -611,6 +689,7 @@ export default {
         const payload = {
           city: editForm.value.city.trim(),
           line_name: editForm.value.line_name.trim(),
+          strips_per_bow: Number(editForm.value.strips_per_bow) || 2,
         }
         if (editForm.value.arc_intensity_threshold_a2s != null && editForm.value.arc_intensity_threshold_a2s !== '') {
           payload.arc_intensity_threshold_a2s = Number(editForm.value.arc_intensity_threshold_a2s)
@@ -740,6 +819,7 @@ export default {
           if (importJob.value.status === 'completed') {
             ElMessage.success('弓网数据已入库，可立即查看分析页面')
             await loadAll()
+            if (maintainVisible.value) await loadRecentJobs(maintainRow.value)
           } else {
             ElMessage.error(importJob.value.error_message || '导入失败')
           }
@@ -939,12 +1019,19 @@ export default {
       managePage,
       managePageSize,
       manageTotal,
+      maintainVisible,
+      maintainRow,
+      recentJobs,
+      jobsLoading,
       loadAll,
       debouncedPreview,
       openCreate,
       resetCreateForm,
       submitCreate,
       openEdit,
+      openMaintain,
+      jobStatusLabel,
+      jobTag,
       resetEditForm,
       submitEdit,
       toggleActive,
@@ -994,27 +1081,48 @@ export default {
   margin-bottom: 12px;
   padding: 12px 16px;
 }
-.expand-codes { padding: 8px 12px; font-size: 12px; color: var(--om-text-muted); line-height: 1.6; }
-.expand-codes .muted { color: var(--om-text-dim); margin: 4px 0 0; }
+.expand-codes { padding: 8px 12px; font-size: 12px; color: #64748b; line-height: 1.6; }
+.maintain-body { display: flex; flex-direction: column; gap: 14px; }
+.maintain-status {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.status-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #64748b;
+}
+.status-item b { color: #0f172a; font-weight: 650; }
+.maintain-hint { margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.55; }
+.maintain-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.job-title { margin: 8px 0 0; font-size: 14px; color: #0f172a; }
+.job-err { color: #b91c1c; }
+.expand-codes .muted { color: #94a3b8; margin: 4px 0 0; }
 .expand-codes .mono { font-family: ui-monospace, monospace; word-break: break-all; }
-.field-hint { margin: 4px 0 0; font-size: 12px; color: var(--om-text-dim); }
+.field-hint { margin: 4px 0 0; font-size: 12px; color: #888; }
 .field-hint.warn { color: var(--el-color-warning); }
 .preview-box {
   margin-left: 112px;
   padding: 10px 12px;
-  background: var(--om-accent-soft);
+  background: #f5f7fa;
   border-radius: 8px;
   font-size: 13px;
 }
 .preview-title { font-weight: 600; margin-bottom: 4px; }
 .readonly-codes {
   font-size: 13px;
-  color: var(--om-text-muted);
+  color: #64748b;
   line-height: 1.6;
   font-family: ui-monospace, monospace;
 }
 .import-line-name { margin: 0 0 8px; font-weight: 600; }
-.import-tip { margin: 0 0 14px; font-size: 13px; color: var(--om-text-muted); line-height: 1.6; }
+.import-tip { margin: 0 0 14px; font-size: 13px; color: #64748b; line-height: 1.6; }
 .import-tip .mono { font-family: ui-monospace, monospace; font-size: 12px; }
 .folder-row { display: flex; gap: 10px; margin-bottom: 8px; }
 .hidden-input { display: none; }
@@ -1022,24 +1130,24 @@ export default {
 .import-path-box {
   margin-bottom: 12px;
   padding: 10px 12px;
-  background: var(--om-bg-3);
-  border: 1px solid var(--om-panel-border);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
 }
-.import-path-label { font-size: 12px; color: var(--om-text-muted); margin-bottom: 4px; }
+.import-path-label { font-size: 12px; color: #64748b; margin-bottom: 4px; }
 .import-path-value {
   font-size: 13px;
   font-family: ui-monospace, monospace;
   word-break: break-all;
   line-height: 1.5;
 }
-.import-scan { margin: 0 0 12px; font-size: 13px; color: var(--om-text-muted); line-height: 1.6; }
-.import-scan.muted { color: var(--om-text-dim); }
+.import-scan { margin: 0 0 12px; font-size: 13px; color: #475569; line-height: 1.6; }
+.import-scan.muted { color: #94a3b8; }
 .import-options-row { margin-top: 4px; }
-.import-hint-muted { margin: 8px 0 0; font-size: 12px; color: var(--om-text-dim); line-height: 1.5; }
-.import-done-tip { margin: 12px 0 0; font-size: 13px; color: var(--om-success); line-height: 1.6; }
-.manage-summary { margin-bottom: 12px; font-size: 13px; color: var(--om-text-muted); line-height: 1.6; }
-.manage-summary.muted { color: var(--om-text-dim); }
+.import-hint-muted { margin: 8px 0 0; font-size: 12px; color: #94a3b8; line-height: 1.5; }
+.import-done-tip { margin: 12px 0 0; font-size: 13px; color: #059669; line-height: 1.6; }
+.manage-summary { margin-bottom: 12px; font-size: 13px; color: #475569; line-height: 1.6; }
+.manage-summary.muted { color: #94a3b8; }
 .manage-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1055,14 +1163,14 @@ export default {
   margin-top: 12px;
 }
 .manage-selected { font-size: 12px; white-space: nowrap; }
-.import-stat { margin: 12px 0 4px; font-size: 13px; color: var(--om-text-muted); }
-.import-current { margin: 0; font-size: 12px; color: var(--om-text-muted); }
+.import-stat { margin: 12px 0 4px; font-size: 13px; color: #64748b; }
+.import-current { margin: 0; font-size: 12px; color: #475569; }
 .import-log {
   margin-top: 12px;
   max-height: 180px;
   overflow: auto;
   padding: 10px;
-  background: var(--om-bg-3);
+  background: #f8fafc;
   border-radius: 6px;
   font-size: 11px;
   line-height: 1.5;

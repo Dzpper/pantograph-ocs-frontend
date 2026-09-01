@@ -40,7 +40,19 @@
           @change="onFilterChange"
         />
       </div>
-      <span class="shared-hint">与「可用预估」共用选线/日期，默认近半年</span>
+      <div class="om-toolbar-field">
+        <span class="om-toolbar-label">限厚线</span>
+        <el-input-number
+          v-model="minThickness"
+          :min="0.1"
+          :step="0.5"
+          :precision="1"
+          style="width: 110px"
+          @change="onMinThicknessChange"
+        />
+        <span class="om-toolbar-label">mm</span>
+      </div>
+      <span class="shared-hint">与「可用预估」共用选线/日期/限厚线，默认近半年</span>
       <div class="om-toolbar-actions">
         <el-button type="primary" @click="load">刷新</el-button>
         <el-button @click="goPredict">去预测</el-button>
@@ -62,7 +74,7 @@
         <div class="kpi" :class="{ alert: (data.kpi.uneven_vehicle_count || 0) > 0 }">
           <div class="kpi-label">偏磨车辆</div>
           <div class="kpi-value">{{ data.kpi.uneven_vehicle_count || 0 }} <small>辆</small></div>
-          <div class="kpi-sub">双弓四板厚度差偏大</div>
+          <div class="kpi-sub">{{ data.kpi?.topology_summary || data.topology?.summary || '双弓多板' }}厚度差偏大</div>
         </div>
         <div class="kpi">
           <div class="kpi-label">换板记录</div>
@@ -130,7 +142,7 @@
         <template v-if="vehicleTrend && !vehicleTrend.empty">
           <div class="charts vehicle-trend-charts">
             <div class="chart-panel-inner">
-              <div class="sub-title">厚度变化（四板 + 平均）</div>
+              <div class="sub-title">厚度变化（各板 + 平均）</div>
               <v-chart class="chart-canvas chart-tall" :option="vehicleThicknessOption" autoresize />
             </div>
             <div class="chart-panel-inner">
@@ -165,6 +177,7 @@ import { GridComponent, TooltipComponent, MarkLineComponent, LegendComponent } f
 import { fetchStripWearLines, postStripWearDashboard, fetchStripWearVehicleTrend } from '../api/client'
 import { loadStripPrefs, saveStripPrefs, defaultStripDateRange, clampMinThickness } from '../utils/stripPrefs'
 import { coerceLineCode, formatLineName } from '../utils/lineDisplay'
+import { resolveTopology, slotValue, stripColor } from '../utils/stripTopology'
 
 use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent, MarkLineComponent, LegendComponent])
 
@@ -194,7 +207,14 @@ export default {
       saveStripPrefs({
         lineCode: lineCode.value,
         dateRange: dateRange.value,
+        minThickness: minThickness.value,
       })
+      load()
+    }
+
+    function onMinThicknessChange(val) {
+      minThickness.value = clampMinThickness(val)
+      saveStripPrefs({ minThickness: minThickness.value })
       load()
     }
 
@@ -246,14 +266,17 @@ export default {
     const vehicleThicknessOption = computed(() => {
       const series = vehicleTrend.value?.thickness_series || []
       if (!series.length) return {}
+      const topo = resolveTopology(vehicleTrend.value || data.value)
+      const slots = topo.slots || []
       const dates = series.map((s) => s.date)
+      const legend = ['平均厚度', ...slots.map((s) => s.label)]
       return {
         tooltip: {
           trigger: 'axis',
           valueFormatter: (v) => (v == null ? '—' : `${Number(v).toFixed(1)} mm`),
         },
         legend: {
-          data: ['平均厚度', '2车弓板1', '2车弓板2', '5车弓板1', '5车弓板2'],
+          data: legend,
           top: 0,
           textStyle: { fontSize: 11 },
         },
@@ -279,38 +302,14 @@ export default {
               label: { formatter: `限厚线 ${minThickness.value}`, fontSize: 10 },
             },
           },
-          {
-            name: '2车弓板1',
+          ...slots.map((slot, idx) => ({
+            name: slot.label,
             type: 'line',
-            data: series.map((s) => s.thick_car2),
+            data: series.map((s) => slotValue(s, slot)),
             symbolSize: 4,
-            lineStyle: { width: 1.5, color: '#3488d9' },
-            itemStyle: { color: '#3488d9' },
-          },
-          {
-            name: '2车弓板2',
-            type: 'line',
-            data: series.map((s) => s.thick_col1),
-            symbolSize: 4,
-            lineStyle: { width: 1.5, color: '#5a9ee3' },
-            itemStyle: { color: '#5a9ee3' },
-          },
-          {
-            name: '5车弓板1',
-            type: 'line',
-            data: series.map((s) => s.thick_car5),
-            symbolSize: 4,
-            lineStyle: { width: 1.5, color: '#3dbfad' },
-            itemStyle: { color: '#3dbfad' },
-          },
-          {
-            name: '5车弓板2',
-            type: 'line',
-            data: series.map((s) => s.thick_col2),
-            symbolSize: 4,
-            lineStyle: { width: 1.5, color: '#e8a84a' },
-            itemStyle: { color: '#e8a84a' },
-          },
+            lineStyle: { width: 1.5, color: stripColor(idx) },
+            itemStyle: { color: stripColor(idx) },
+          })),
         ],
       }
     })
@@ -590,12 +589,12 @@ export default {
     })
 
     return {
-      loading, lines, lineCode, dateRange, data,
+      loading, lines, lineCode, dateRange, minThickness, data,
       selectedVehicle, vehicleTrend, vehicleTrendLoading, vehicleOptions,
       statusTone, statusText, dashboardLineTitle, shortKmHint, unevenHint,
       trendOption, vehicleRateOption, heightOption, bowCompareOption,
       vehicleThicknessOption, vehicleWearRateOption,
-      fmt, load, loadVehicleTrend, onFilterChange, goPredict, goPredictVehicle, onChartClick,
+      fmt, load, loadVehicleTrend, onFilterChange, onMinThicknessChange, goPredict, goPredictVehicle, onChartClick,
       formatLineName,
     }
   },
@@ -614,7 +613,7 @@ export default {
   color: var(--om-text-dim);
   align-self: center;
 }
-.page-head { /* margin-bottom handled globally */ }
+.page-head { margin-bottom: 4px; }
 .page-title { margin: 0; font-size: 18px; font-weight: 650; color: var(--om-text); }
 .page-sub { margin: 4px 0 0; color: var(--om-text-muted); font-size: 13px; }
 .status-line {

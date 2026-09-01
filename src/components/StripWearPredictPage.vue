@@ -53,8 +53,7 @@
         <span class="om-toolbar-label">限厚线</span>
         <el-input-number
           v-model="minThickness"
-          :min="5"
-          :max="20"
+          :min="0.1"
           :step="0.5"
           :precision="1"
           style="width: 110px"
@@ -62,7 +61,7 @@
         />
         <span class="om-toolbar-label">mm</span>
       </div>
-      <span class="shared-hint">与看板共用选线/日期；限厚线默认 5 mm</span>
+      <span class="shared-hint">与看板共用选线/日期；限厚线默认 5 mm，修改后自动重算</span>
       <div class="om-toolbar-actions">
         <el-button type="primary" @click="load">计算</el-button>
       </div>
@@ -101,33 +100,33 @@
           :row-class-name="rowClass"
         >
           <el-table-column prop="vehicle_no" label="车号" width="80" fixed />
-          <el-table-column prop="status" label="状态" min-width="88">
+          <el-table-column prop="status" label="状态" width="88">
             <template #default="{ row }">
               <span :class="statusClass(row.status)">{{ row.status }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="2车弓" min-width="78">
+          <el-table-column label="2车弓" width="78">
             <template #default="{ row }">{{ fmt(row.bow2_avg, 1) }}</template>
           </el-table-column>
-          <el-table-column label="5车弓" min-width="78">
+          <el-table-column label="5车弓" width="78">
             <template #default="{ row }">{{ fmt(row.bow5_avg, 1) }}</template>
           </el-table-column>
-          <el-table-column label="最薄板" min-width="100">
+          <el-table-column label="最薄板" width="100">
             <template #default="{ row }">
               {{ row.governing_strip || '—' }} {{ row.current_min_height != null ? fmt(row.current_min_height, 1) : '' }}
             </template>
           </el-table-column>
-          <el-table-column label="偏磨" min-width="88">
+          <el-table-column label="偏磨" width="88">
             <template #default="{ row }">
               <span :class="{ danger: row.uneven }">{{ row.uneven ? (row.uneven_level || '偏磨') : '—' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="预计可用" min-width="88">
+          <el-table-column label="预计可用" width="88">
             <template #default="{ row }">
               <span :class="rulClass(row)">{{ row.rul_days == null ? '—' : row.rul_days + ' 天' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="剩余公里" min-width="96">
+          <el-table-column label="剩余公里" width="96">
             <template #default="{ row }">{{ row.remaining_km == null ? '—' : fmt(row.remaining_km, 0) }}</template>
           </el-table-column>
           <el-table-column prop="advice" label="说明" min-width="160" show-overflow-tooltip />
@@ -137,21 +136,23 @@
       <div class="charts" v-if="selected">
         <div class="om-panel chart-panel">
           <div class="panel-title">
-            {{ selected.vehicle_no }} · 双弓四板厚度
+            {{ selected.vehicle_no }} · {{ topoSummary }}厚度
             <span class="title-meta" v-if="selected.uneven">
               {{ selected.uneven_level }} · {{ selected.uneven_target || '' }}
             </span>
           </div>
-          <div class="bow-cards" v-if="selected.bow2_avg != null || selected.bow5_avg != null">
-            <div class="bow-card" :class="{ alert: selected.uneven_target && selected.uneven_target.includes('2车') }">
-              <div class="bow-name">2车弓</div>
-              <div class="bow-avg">均值 {{ fmt(selected.bow2_avg, 1) }} mm</div>
-              <div class="bow-strips">板1 {{ fmt(selected.thick_car2, 1) }} · 板2 {{ fmt(selected.thick_col1, 1) }}</div>
-            </div>
-            <div class="bow-card" :class="{ alert: selected.uneven_target && selected.uneven_target.includes('5车') }">
-              <div class="bow-name">5车弓</div>
-              <div class="bow-avg">均值 {{ fmt(selected.bow5_avg, 1) }} mm</div>
-              <div class="bow-strips">板1 {{ fmt(selected.thick_car5, 1) }} · 板2 {{ fmt(selected.thick_col2, 1) }}</div>
+          <div class="bow-cards" v-if="selectedBows.length">
+            <div
+              v-for="bow in selectedBows"
+              :key="bow.id"
+              class="bow-card"
+              :class="{ alert: selected.uneven_target && String(selected.uneven_target).includes(bow.label) }"
+            >
+              <div class="bow-name">{{ bow.label }}</div>
+              <div class="bow-avg">均值 {{ fmt(bow.avg, 1) }} mm</div>
+              <div class="bow-strips">
+                {{ (bow.thicknesses || []).map((t, i) => `板${i + 1} ${fmt(t, 1)}`).join(' · ') }}
+              </div>
             </div>
             <div class="bow-action">
               <el-button type="primary" @click="goRegisterReplace">登记换板</el-button>
@@ -195,6 +196,7 @@ import {
 } from '../api/client'
 import { loadStripPrefs, saveStripPrefs, defaultStripDateRange, clampMinThickness } from '../utils/stripPrefs'
 import { coerceLineCode, formatLineName } from '../utils/lineDisplay'
+import { resolveTopology, slotValue, stripColor } from '../utils/stripTopology'
 
 use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, MarkLineComponent])
 
@@ -240,6 +242,7 @@ export default {
     function onMinThicknessChange(val) {
       minThickness.value = clampMinThickness(val)
       persistShared()
+      load()
     }
 
     async function onSharedFilterChange() {
@@ -253,6 +256,18 @@ export default {
       || data.value?.predictions?.[0]
       || null
     )
+
+    const currentTopo = computed(() => resolveTopology(data.value || selected.value))
+    const topoSummary = computed(() => currentTopo.value.summary || '双弓多板')
+    const selectedBows = computed(() => {
+      const p = selected.value
+      if (!p) return []
+      if (Array.isArray(p.bows) && p.bows.length) return p.bows
+      return [
+        { id: 'bow2', label: '2车弓', avg: p.bow2_avg, thicknesses: [p.thick_car2, p.thick_col1] },
+        { id: 'bow5', label: '5车弓', avg: p.bow5_avg, thicknesses: [p.thick_car5, p.thick_col2] },
+      ].filter((b) => b.avg != null || (b.thicknesses || []).some((t) => t != null))
+    })
 
     const summary = computed(() => data.value?.summary || {})
 
@@ -301,23 +316,22 @@ export default {
     const stripOption = computed(() => {
       const p = selected.value
       const hist = p?.strip_history || []
+      const topo = resolveTopology(data.value || p)
+      const slots = topo.slots || []
       if (!hist.length) {
-        // fallback single bar of current four strips
         if (!p) return {}
         return {
           tooltip: { trigger: 'axis' },
           grid: { left: 48, right: 12, top: 16, bottom: 28 },
-          xAxis: { type: 'category', data: ['2车弓板1', '2车弓板2', '5车弓板1', '5车弓板2'] },
+          xAxis: { type: 'category', data: slots.map((s) => s.label) },
           yAxis: { type: 'value', name: 'mm', min: 0, scale: true },
           series: [{
             type: 'bar',
             barMaxWidth: 36,
-            data: [
-              { value: p.thick_car2, itemStyle: { color: '#3488d9' } },
-              { value: p.thick_col1, itemStyle: { color: '#5a9ee3' } },
-              { value: p.thick_car5, itemStyle: { color: '#3dbfad' } },
-              { value: p.thick_col2, itemStyle: { color: '#6ed0c2' } },
-            ],
+            data: slots.map((slot, idx) => ({
+              value: slotValue(p, slot),
+              itemStyle: { color: stripColor(idx) },
+            })),
             markLine: {
               symbol: 'none',
               data: [{ yAxis: p.min_thickness_mm || minThickness.value }],
@@ -329,7 +343,7 @@ export default {
       }
       return {
         tooltip: { trigger: 'axis' },
-        legend: { data: ['2车弓板1', '2车弓板2', '5车弓板1', '5车弓板2'], top: 0, textStyle: { fontSize: 11 } },
+        legend: { data: slots.map((s) => s.label), top: 0, textStyle: { fontSize: 11 } },
         grid: { left: 44, right: 12, top: 28, bottom: 36 },
         xAxis: {
           type: 'category',
@@ -337,12 +351,13 @@ export default {
           axisLabel: { rotate: 30, fontSize: 10 },
         },
         yAxis: { type: 'value', name: 'mm', min: 0, scale: true },
-        series: [
-          { name: '2车弓板1', type: 'line', data: hist.map((h) => h.thick_car2), symbolSize: 4, itemStyle: { color: '#3488d9' } },
-          { name: '2车弓板2', type: 'line', data: hist.map((h) => h.thick_col1), symbolSize: 4, itemStyle: { color: '#5a9ee3' } },
-          { name: '5车弓板1', type: 'line', data: hist.map((h) => h.thick_car5), symbolSize: 4, itemStyle: { color: '#3dbfad' } },
-          { name: '5车弓板2', type: 'line', data: hist.map((h) => h.thick_col2), symbolSize: 4, itemStyle: { color: '#e8a84a' } },
-        ],
+        series: slots.map((slot, idx) => ({
+          name: slot.label,
+          type: 'line',
+          data: hist.map((h) => slotValue(h, slot)),
+          symbolSize: 4,
+          itemStyle: { color: stripColor(idx) },
+        })),
       }
     })
 
@@ -546,6 +561,7 @@ export default {
     return {
       loading, lines, lineCode, vehicles, vehicleNos, dateRange,
       minThickness, data, selectedVehicle, selected, summary,
+      topoSummary, selectedBows,
       statusTone, statusText, skippedHint, minRulText, minRulVehicle,
       stripOption, thicknessOption,
       fmt, load, onLineChange, onSharedFilterChange, onMinThicknessChange, persistShared,
@@ -567,7 +583,7 @@ export default {
   color: var(--om-text-dim);
   align-self: center;
 }
-.page-head { /* margin-bottom handled globally */ }
+.page-head { margin-bottom: 4px; }
 .page-title { margin: 0; font-size: 18px; font-weight: 650; color: var(--om-text); }
 .page-sub { margin: 4px 0 0; color: var(--om-text-muted); font-size: 13px; }
 .status-line {

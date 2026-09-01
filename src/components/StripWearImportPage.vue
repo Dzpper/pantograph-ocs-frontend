@@ -2,7 +2,7 @@
   <div class="data-page" v-loading="loading">
     <div class="page-head">
       <h2 class="page-title">碳滑板磨耗数据导入</h2>
-      <p class="page-sub">导入 Excel，或按条件查询后勾选测点统一编辑/删除（2车弓=板1+板2，5车弓=板1+板2）</p>
+      <p class="page-sub">导入 Excel，或按条件查询后勾选测点统一编辑/删除（按线路拓扑：{{ topoSummary }}）</p>
       <p v-if="replaceHint" class="hint-line">{{ replaceHint }}</p>
     </div>
 
@@ -95,32 +95,28 @@
           >
             <el-table-column type="selection" width="42" reserve-selection />
             <el-table-column prop="vehicle_no" label="车号" width="90" fixed />
-            <el-table-column prop="inspect_date" label="检查日期" min-width="120" />
-            <el-table-column label="公里数" min-width="100">
+            <el-table-column prop="inspect_date" label="检查日期" width="120" />
+            <el-table-column label="公里数" width="100">
               <template #default="{ row }">{{ fmt(row.odometer_km, 0) }}</template>
             </el-table-column>
-            <el-table-column label="2车弓板1" min-width="88">
-              <template #default="{ row }">{{ fmt(row.thick_car2, 2) }}</template>
+            <el-table-column
+              v-for="slot in currentSlots"
+              :key="slot.key"
+              :label="slot.label"
+              width="92"
+            >
+              <template #default="{ row }">{{ fmt(slotVal(row, slot), 2) }}</template>
             </el-table-column>
-            <el-table-column label="2车弓板2" min-width="88">
-              <template #default="{ row }">{{ fmt(row.thick_col1, 2) }}</template>
-            </el-table-column>
-            <el-table-column label="5车弓板1" min-width="88">
-              <template #default="{ row }">{{ fmt(row.thick_car5, 2) }}</template>
-            </el-table-column>
-            <el-table-column label="5车弓板2" min-width="88">
-              <template #default="{ row }">{{ fmt(row.thick_col2, 2) }}</template>
-            </el-table-column>
-            <el-table-column label="平均高度" min-width="90">
+            <el-table-column label="平均高度" width="90">
               <template #default="{ row }">{{ fmt(row.avg_height, 3) }}</template>
             </el-table-column>
-            <el-table-column label="万公里磨耗(均)" min-width="120">
+            <el-table-column label="万公里磨耗(均)" width="120">
               <template #default="{ row }">{{ fmt(row.wear_per_10k_avg, 3) }}</template>
             </el-table-column>
-            <el-table-column label="换板" min-width="70">
+            <el-table-column label="换板" width="70">
               <template #default="{ row }">{{ row.is_replaced ? '是' : '否' }}</template>
             </el-table-column>
-            <el-table-column prop="replace_cycle" label="周期" min-width="70" />
+            <el-table-column prop="replace_cycle" label="周期" width="70" />
           </el-table>
 
           <div class="pager">
@@ -144,7 +140,7 @@
         <DataSourceNote
           type="info"
           title="导入说明"
-          message="上传与「滑板磨耗原始数据表」同结构的 Excel。必填：车号、检查日期、公里数、2车/列1/5车/列2。「是否更换碳滑板」「当前更换周期」为选填，日常可留空；换板时在「是否更换」填 1 或「是」即可，周期由系统自动编号。详见模板内「填写说明」工作表。"
+          :message="`上传与「滑板磨耗原始数据表」同结构的 Excel。必填：车号、检查日期、公里数及厚度列（当前线路 ${topoSummary}）。「是否更换碳滑板」「当前更换周期」为选填。请先选线路再下载对应模板。`"
         />
 
         <div class="om-panel upload-panel">
@@ -226,9 +222,9 @@
           <el-table v-if="importResults.length" :data="importResults" size="small" style="margin-top: 12px" stripe>
             <el-table-column prop="line_name" label="线路" min-width="140" />
             <el-table-column prop="sheet_name" label="工作表" min-width="180" />
-            <el-table-column prop="raw_rows" label="原始行" min-width="90" />
-            <el-table-column prop="stored_rows" label="入库行" min-width="90" />
-            <el-table-column prop="vehicle_count" label="车辆数" min-width="90" />
+            <el-table-column prop="raw_rows" label="原始行" width="90" />
+            <el-table-column prop="stored_rows" label="入库行" width="90" />
+            <el-table-column prop="vehicle_count" label="车辆数" width="90" />
           </el-table>
         </div>
       </el-tab-pane>
@@ -257,17 +253,14 @@
           <el-input-number v-model="form.odometer_km" :controls="false" style="width: 100%" />
         </el-form-item>
         <div class="thick-grid">
-          <el-form-item label="2车弓·板1">
-            <el-input-number v-model="form.thick_car2" :precision="3" :step="0.01" :controls="false" style="width: 100%" />
-          </el-form-item>
-          <el-form-item label="2车弓·板2">
-            <el-input-number v-model="form.thick_col1" :precision="3" :step="0.01" :controls="false" style="width: 100%" />
-          </el-form-item>
-          <el-form-item label="5车弓·板1">
-            <el-input-number v-model="form.thick_car5" :precision="3" :step="0.01" :controls="false" style="width: 100%" />
-          </el-form-item>
-          <el-form-item label="5车弓·板2">
-            <el-input-number v-model="form.thick_col2" :precision="3" :step="0.01" :controls="false" style="width: 100%" />
+          <el-form-item v-for="slot in formSlots" :key="slot.key" :label="slot.label">
+            <el-input-number
+              v-model="form.strip_values[slot.key]"
+              :precision="3"
+              :step="0.01"
+              :controls="false"
+              style="width: 100%"
+            />
           </el-form-item>
         </div>
         <el-form-item label="平均高度">
@@ -295,7 +288,7 @@
 </template>
 
 <script>
-import { ref, onMounted, onActivated, watch } from 'vue'
+import { ref, computed, onMounted, onActivated, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import DataSourceNote from './common/DataSourceNote.vue'
 import {
@@ -313,17 +306,22 @@ import {
 } from '../api/client'
 import { loadStripPrefs, saveStripPrefs, defaultStripDateRange } from '../utils/stripPrefs'
 import { coerceLineCode, resolveLineName, formatLineName } from '../utils/lineDisplay'
+import {
+  resolveTopology,
+  slotValue,
+  emptyStripValues,
+  stripValuesFromRow,
+  payloadFromStripValues,
+} from '../utils/stripTopology'
 
-function emptyForm(lineCode = '') {
+function emptyForm(lineCode = '', topo = null) {
+  const t = topo || resolveTopology(null)
   return {
     line_code: lineCode,
     vehicle_no: '',
     inspect_date: '',
     odometer_km: null,
-    thick_car2: null,
-    thick_col1: null,
-    thick_car5: null,
-    thick_col2: null,
+    strip_values: emptyStripValues(t),
     avg_height: null,
     wear_per_10k_avg: null,
     wear_per_10k_max: null,
@@ -390,6 +388,23 @@ export default {
     const resultOk = ref(false)
     const importLineOptions = ref([])
     const isOwner = ref(false)
+    const pageTopology = ref(null)
+
+    const currentTopo = computed(() => {
+      const line = lines.value.find((l) => l.line_code === lineCode.value)
+      return resolveTopology(pageTopology.value || line)
+    })
+    const currentSlots = computed(() => currentTopo.value.slots || [])
+    const topoSummary = computed(() => currentTopo.value.summary || '双弓2板')
+    const formTopo = computed(() => {
+      const line = lines.value.find((l) => l.line_code === form.value.line_code)
+      return resolveTopology(line || currentTopo.value)
+    })
+    const formSlots = computed(() => formTopo.value.slots || [])
+
+    function slotVal(row, slot) {
+      return slotValue(row, slot)
+    }
 
     async function loadImportLineOptions() {
       try {
@@ -452,6 +467,7 @@ export default {
         }
         rows.value = data.items || []
         total.value = data.total || 0
+        if (data.topology) pageTopology.value = data.topology
       } catch (e) {
         rows.value = []
         total.value = 0
@@ -501,8 +517,10 @@ export default {
 
     function openCreate(preset = {}) {
       editingId.value = null
+      const code = preset.line_code || lineCode.value
+      const line = lines.value.find((l) => l.line_code === code)
       form.value = {
-        ...emptyForm(preset.line_code || lineCode.value),
+        ...emptyForm(code, resolveTopology(line || currentTopo.value)),
         vehicle_no: preset.vehicle_no || '',
         is_replaced: preset.is_replaced != null ? preset.is_replaced : 0,
         replace_cycle: preset.replace_cycle || 1,
@@ -529,15 +547,13 @@ export default {
 
     function openEdit(row) {
       editingId.value = row.measurement_id
+      const topo = resolveTopology(pageTopology.value || currentTopo.value)
       form.value = {
         line_code: lineCode.value,
         vehicle_no: row.vehicle_no,
         inspect_date: String(row.inspect_date || '').slice(0, 10),
         odometer_km: row.odometer_km,
-        thick_car2: row.thick_car2,
-        thick_col1: row.thick_col1,
-        thick_car5: row.thick_car5,
-        thick_col2: row.thick_col2,
+        strip_values: stripValuesFromRow(row, topo),
         avg_height: row.avg_height,
         wear_per_10k_avg: row.wear_per_10k_avg,
         wear_per_10k_max: row.wear_per_10k_max,
@@ -554,11 +570,25 @@ export default {
       }
       saving.value = true
       try {
+        const topo = formTopo.value
+        const thick = payloadFromStripValues(form.value.strip_values, topo)
+        const payload = {
+          line_code: form.value.line_code,
+          vehicle_no: form.value.vehicle_no,
+          inspect_date: form.value.inspect_date,
+          odometer_km: form.value.odometer_km,
+          avg_height: form.value.avg_height,
+          wear_per_10k_avg: form.value.wear_per_10k_avg,
+          wear_per_10k_max: form.value.wear_per_10k_max,
+          is_replaced: form.value.is_replaced,
+          replace_cycle: form.value.replace_cycle,
+          ...thick,
+        }
         if (editingId.value) {
-          await updateStripWearMeasurement(editingId.value, form.value)
+          await updateStripWearMeasurement(editingId.value, payload)
           ElMessage.success('已更新')
         } else {
-          await createStripWearMeasurement(form.value)
+          await createStripWearMeasurement(payload)
           ElMessage.success('已新增')
         }
         dialogVisible.value = false
@@ -781,6 +811,7 @@ export default {
       dialogVisible, editingId, form,
       file, fileList, sheets, sheetName, importLineCode, replaceLineData,
       importResults, resultMsg, resultOk, importLineOptions, isOwner,
+      currentSlots, formSlots, topoSummary, slotVal,
       fmt, loadRows, onFilterChange, onPageSizeChange, onSelectionChange,
       clearSelection, editSelected, onMoreCommand,
       openCreate, openEdit, saveForm, batchDelete, clearLine,
@@ -840,6 +871,7 @@ export default {
   gap: 8px;
 }
 .pager {
+  margin-top: 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -853,7 +885,7 @@ export default {
   gap: 12px;
   margin-bottom: 16px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--om-divider);
+  border-bottom: 1px solid var(--om-border, #e8e8e8);
 }
 .template-hint {
   font-size: 13px;

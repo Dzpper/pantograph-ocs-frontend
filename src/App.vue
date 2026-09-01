@@ -190,7 +190,7 @@
 
 <script>
 import { computed } from 'vue'
-import { fetchLines, fetchDates, fetchStripWearLines, fetchMe } from './api/client'
+import { fetchLines, fetchDates, fetchStripWearLines, fetchMe, postAggWarmup } from './api/client'
 import { centers, DEFAULT_CENTER, DEFAULT_PAGE, findPage, pagesOfCenter, firstPageKeyOfCenter } from './config/modules'
 import PlaceholderPage from './components/common/PlaceholderPage.vue'
 import FilterBar from './components/common/FilterBar.vue'
@@ -199,7 +199,7 @@ import LoginPage from './components/LoginPage.vue'
 import ChangePasswordDialog from './components/ChangePasswordDialog.vue'
 import { clearAuth, getStoredUser, getToken, isAdmin } from './utils/auth'
 import { pickLineCode, pickLineName, resolveLineName } from './utils/lineDisplay'
-import { loadBatchPrefs, saveBatchPrefs } from './utils/batchPrefs'
+import { loadBatchPrefs, saveBatchPrefs, withBatchPayload } from './utils/batchPrefs'
 
 const FILTER_STORAGE_KEY = 'om_filter_prefs'
 
@@ -230,6 +230,8 @@ export default {
       isDark: false,
       apiError: '',
       datesLoading: false,
+      filterSwitching: false,
+      datesLoadSeq: 0,
       navigationContext: {},
       authUser: null,
       authReady: false,
@@ -243,9 +245,7 @@ export default {
       batchesByDate: {},
       /** 手动点「查询」时递增，分析页据此强制刷新 */
       queryNonce: 0,
-      /** 切线/行别进行中：忽略 FilterBar 回灌的旧 dates/batches */
-      filterSwitching: false,
-      datesLoadSeq: 0,
+      _warmupTimer: null,
     }
   },
   computed: {
@@ -254,7 +254,7 @@ export default {
     },
     visibleCenters() {
       if (this.isAdminUser) return this.centers
-      return this.centers.filter((c) => c.key !== 'system')
+      return this.centers.filter((c) => c.key !== 'system' && !c.adminOnly)
     },
     currentGroups() {
       const groups = pagesOfCenter(this.currentCenter)
@@ -514,7 +514,9 @@ export default {
         const raw = localStorage.getItem(this.filterStorageKey())
         if (!raw) return
         const prefs = JSON.parse(raw)
-        if (prefs.currentCenter && pagesOfCenter(prefs.currentCenter).length) {
+        const savedCenter = this.centers.find((c) => c.key === prefs.currentCenter)
+        const centerAllowed = savedCenter && (this.isAdminUser || !savedCenter.adminOnly)
+        if (prefs.currentCenter && pagesOfCenter(prefs.currentCenter).length && centerAllowed) {
           this.currentCenter = prefs.currentCenter
         } else {
           this.currentCenter = DEFAULT_CENTER
@@ -612,6 +614,7 @@ export default {
       this.saveFilterPrefs()
       this.adjustDatesForPage()
       this.loadDates()
+      this.scheduleAnalysisWarmup()
     },
     switchPage(key) {
       this.currentPage = key
@@ -635,6 +638,7 @@ export default {
       this.saveFilterPrefs()
       this.adjustDatesForPage()
       this.loadDates()
+      this.scheduleAnalysisWarmup()
       this.mobileMenuOpen = false
     },
     onMobileSwitchCenter(key) {
@@ -713,6 +717,7 @@ export default {
       }
       this.selectedDates = kept
       this.saveFilterPrefs()
+      this.scheduleAnalysisWarmup()
     },
     onFilterQuery() {
       this.queryNonce += 1
@@ -756,6 +761,24 @@ export default {
         batchesByDate: this.batchesByDate,
       }, this.lineId, this.direction)
       this.saveFilterPrefs()
+      this.scheduleAnalysisWarmup()
+    },
+    scheduleAnalysisWarmup() {
+      if (this._warmupTimer) clearTimeout(this._warmupTimer)
+      this._warmupTimer = setTimeout(() => {
+        this._warmupTimer = null
+        this.warmupAnalysisAgg()
+      }, 800)
+    },
+    warmupAnalysisAgg() {
+      if (this.currentCenter !== 'analysis') return
+      if (!this.lineId || !this.selectedDates?.length) return
+      const payload = withBatchPayload({
+        line_id: this.lineId,
+        direction: this.direction || '上行',
+        dates: this.selectedDates.map((d) => String(d).replace(/-/g, '').slice(0, 8)),
+      }, this.manualBatch, this.batchByDate, this.batchesByDate)
+      postAggWarmup(payload).catch(() => {})
     },
     async loadLines() {
       this.linesReady = false

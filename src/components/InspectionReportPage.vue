@@ -10,14 +10,13 @@
         <el-input-number
           v-model="minThickness"
           class="no-print"
-          :min="5"
-          :max="20"
+          :min="0.1"
           :step="0.5"
           :precision="1"
           style="width: 110px"
           @change="onMinThicknessChange"
         />
-        <span class="page-sub no-print">mm（与可用预估一致）</span>
+        <span class="page-sub no-print">mm（修改后自动重算）</span>
       </template>
       <span class="page-sub line-badge">当前线路：{{ lineName || '未选择' }}</span>
       <el-button type="primary" plain size="small" @click="onPrint" style="margin-left: auto">打印 / 导出 PDF</el-button>

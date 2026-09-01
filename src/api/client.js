@@ -1,8 +1,9 @@
 import axios from 'axios'
-import { cachedPost, cachedGet, cacheKey, getCached, setCached } from './cache'
+import { cachedPost, cachedGet, cacheKey, getCached, setCached, clearApiCache } from './cache'
 import { clearAuth, getToken } from '../utils/auth'
 import { normalizeLineList } from '../utils/lineDisplay'
 import { downloadApiBlob } from '../utils/download'
+import { setAlarmRuleCatalog } from '../utils/alarmRules'
 
 const client = axios.create({
   baseURL: '/api',
@@ -147,7 +148,10 @@ export async function uploadMonitorStagingFiles(stagingId, files) {
 }
 
 export async function downloadMonitorImportTemplate() {
-  return downloadApiBlob(client, '/auth/import/monitor/template', 'monitor_import_template.xlsx')
+  await downloadApiBlob(
+    client.get('/auth/import/monitor/template', { responseType: 'blob' }),
+    'monitor_import_template.xlsx',
+  )
 }
 
 export async function runMonitorSnapshot(monitorCode) {
@@ -164,6 +168,7 @@ export async function deleteMonitorBatches(registryId, batchIds) {
   const res = await client.post(`/auth/lines/registry/${registryId}/monitor-batches/delete`, {
     batch_ids: batchIds,
   })
+  clearApiCache()
   return res.data
 }
 
@@ -174,6 +179,9 @@ export async function runMonitorImport(payload) {
 
 export async function fetchImportJob(jobId) {
   const res = await client.get(`/auth/import/jobs/${jobId}`)
+  if (res.data?.status === 'completed' || res.data?.status === 'failed') {
+    clearApiCache()
+  }
   return res.data
 }
 
@@ -204,20 +212,22 @@ export async function fetchOpLogs(params = {}) {
 
 export async function fetchImportJobs(params = {}) {
   const res = await client.get('/auth/import/jobs', { params })
-  return res.data.jobs || []
+  return res.data
 }
 
 export async function fetchLines() {
-  const res = await client.get('/lines')
-  return normalizeLineList(res.data.lines || [])
+  const data = await cachedGet(client, '/lines', {})
+  if (data?.health_thresholds) setAlarmRuleCatalog(data.health_thresholds)
+  return normalizeLineList(data.lines || [])
 }
 
 export async function fetchDates(lineId, direction) {
-  const res = await client.get('/dates', { params: { line_id: lineId, direction } })
+  const data = await cachedGet(client, '/dates', { line_id: lineId, direction })
   return {
-    dates: res.data.dates || [],
-    dateMeta: res.data.date_meta || {},
-    mergeNote: res.data.merge_note || '',
+    dates: data.dates || [],
+    dateMeta: data.date_meta || {},
+    mergeNote: data.merge_note || '',
+    mergeStrategy: data.merge_strategy || '',
   }
 }
 
@@ -231,8 +241,8 @@ export async function fetchDayBatches(lineId, direction, date) {
 }
 
 export async function fetchMetrics() {
-  const res = await client.get('/metrics')
-  return res.data.metrics || []
+  const data = await cachedGet(client, '/metrics', {})
+  return data.metrics || []
 }
 
 export async function postComparison(payload, options) {
@@ -477,6 +487,12 @@ export async function postCorrelationDiagnose(payload, options) {
 /** 杆号评估：按杆号对照自身历史，分项陈述 */
 export async function postPoleBaseline(payload, options) {
   return cachedPost(client, '/pole-baseline', payload, options)
+}
+
+/** 综合分析栏目：后台预热杆号聚合缓存 */
+export async function postAggWarmup(payload) {
+  const res = await client.post('/agg/warmup', payload)
+  return res.data
 }
 
 export default client
